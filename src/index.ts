@@ -45,7 +45,6 @@ async function storeData(env: Env, firstJobLink: string, roleCount: number): Pro
       roleCount
     };
     await env.SENT_JOBS_KV.put('last_sent_data', JSON.stringify(data));
-    console.log(`Stored data: firstJobLink=${firstJobLink}, roleCount=${roleCount}`);
   } catch (error) {
     console.error('Error storing data:', error);
   }
@@ -53,9 +52,7 @@ async function storeData(env: Env, firstJobLink: string, roleCount: number): Pro
 
 async function extractSoftwareEngineeringRows(readmeContent: string, env: Env): Promise<string> {
   try {
-    console.log('Starting to extract software engineering rows...');
     const lines = readmeContent.split(/\r?\n/);
-    console.log(`Total lines in README: ${lines.length}`);
     
     // Find the start and end of Software Engineering section
     let startLine = -1;
@@ -64,16 +61,13 @@ async function extractSoftwareEngineeringRows(readmeContent: string, env: Env): 
     // Get the previous job link to stop processing at that point
     const storedData = await getStoredData(env);
     const previousJobLink = storedData ? storedData.firstJobLink : '';
-    console.log(`Previous job link: ${previousJobLink || 'None (first run)'}`);
     
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].includes('<tbody>')) {
         startLine = i;
-        console.log(`Found tbody start at line ${i}`);
       }
       if (lines[i].includes('</tbody>')) {
         endLine = i;
-        console.log(`Found tbody end at line ${i}`);
         break;
       }
     }
@@ -85,7 +79,6 @@ async function extractSoftwareEngineeringRows(readmeContent: string, env: Env): 
 
     // Extract the Software Engineering section
     const softwareEngineeringLines = lines.slice(startLine, endLine);
-    console.log(`Software Engineering section has ${softwareEngineeringLines.length} lines`);
     
     // Parse the HTML table to extract role data
     const roles: Array<{
@@ -124,7 +117,6 @@ async function extractSoftwareEngineeringRows(readmeContent: string, env: Env): 
               
               // Stop processing if we reach the previous job that was already sent
               if (previousJobLink && applyLink === previousJobLink) {
-                console.log(`Reached previous job: ${company} - ${role}. Stopping processing.`);
                 break;
               }
               
@@ -134,13 +126,10 @@ async function extractSoftwareEngineeringRows(readmeContent: string, env: Env): 
           }
         } catch (parseError) {
           console.error(`Error parsing row ${processedRows}:`, parseError);
-          console.error(`Row content:`, tr.join("\n"));
         }
         continue;
       }
     }
-
-    console.log(`Processed ${processedRows} rows, found ${roles.length} roles`);
 
     // Filter out roles that don't have proper company names and roles
     const cleanRoles = roles.filter(role => 
@@ -155,12 +144,8 @@ async function extractSoftwareEngineeringRows(readmeContent: string, env: Env): 
       role.applyLink !== 'N/A'
     );
 
-    console.log(`After filtering: ${cleanRoles.length} clean roles`);
-
     // Create clean JSON output
-    const result = JSON.stringify(cleanRoles.slice(0, 100), null, 2);
-    console.log(`Final JSON length: ${result.length} characters`);
-    return result;
+    return JSON.stringify(cleanRoles.slice(0, 100), null, 2);
   } catch (error) {
     console.error('Error in extractSoftwareEngineeringRows:', error);
     return JSON.stringify([]);
@@ -242,7 +227,6 @@ async function sendEmail(roles: Role[], env: Env): Promise<void> {
     }
 
     const result = await response.json() as { id: string };
-    console.log(`Email sent successfully to ${env.TO_EMAIL} with ${roles.length} roles. ID: ${result.id}`);
   } catch (error) {
     console.error('Failed to send email:', error);
     throw error;
@@ -251,8 +235,6 @@ async function sendEmail(roles: Role[], env: Env): Promise<void> {
 
 async function runCronJob(env: Env, ctx: ExecutionContext): Promise<void> {
   try {
-    console.log('Starting half-hourly cron job...');
-    
     // Validate environment variables
     if (!env.RESEND_API_KEY) {
       throw new Error('RESEND_API_KEY environment variable is not set');
@@ -267,17 +249,11 @@ async function runCronJob(env: Env, ctx: ExecutionContext): Promise<void> {
       throw new Error('SENT_JOBS_KV environment variable is not set');
     }
     
-    console.log('Environment variables validated successfully');
-    
     // Fetch README content
-    console.log('Fetching README from GitHub...');
     const readmeContent = await fetchReadme();
-    console.log(`Successfully fetched README content (${readmeContent.length} characters)`);
     
     // Extract software engineering roles
-    console.log('Extracting Software Engineering roles...');
     const rolesJson = await extractSoftwareEngineeringRows(readmeContent, env);
-    console.log(`Extracted roles JSON (${rolesJson.length} characters)`);
     
     // Parse the JSON string to get the roles array
     let roles: Role[];
@@ -285,44 +261,31 @@ async function runCronJob(env: Env, ctx: ExecutionContext): Promise<void> {
       roles = JSON.parse(rolesJson);
     } catch (error) {
       console.error('Failed to parse roles JSON:', error);
-      console.error('Roles JSON content:', rolesJson);
       throw new Error('Failed to parse roles data');
     }
-    console.log(`Found ${roles.length} top software engineering roles (limited to 100)`);
 
     // If no roles found, don't send email
     if (roles.length === 0) {
-      console.log('No roles found. Skipping email send.');
       return;
     }
 
     // Get the first job link to detect changes
     const currentFirstJobLink = roles[0].applyLink;
-    console.log(`Current first job link: ${currentFirstJobLink}`);
 
     // Check if we've sent this data before
     const storedData = await getStoredData(env);
 
     if (storedData && storedData.firstJobLink === currentFirstJobLink) {
-      console.log('No changes detected in first job. Skipping email send.');
-      console.log(`Last sent: ${storedData.lastUpdated} (${storedData.roleCount} roles)`);
       return;
     }
     
     // Send email with the roles
-    console.log('Changes detected! Sending email...');
     await sendEmail(roles, env);
 
     // Store the current first job link
     await storeData(env, currentFirstJobLink, roles.length);
-    console.log('Cron job completed successfully');
   } catch (error) {
     console.error('Cron job failed:', error);
-    console.error('Error details:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      name: error instanceof Error ? error.name : 'Unknown'
-    });
     throw error;
   }
 }
@@ -332,8 +295,6 @@ export default {
     // Handle manual trigger via HTTP request
     if (request.method === 'GET') {
       try {
-        console.log('Manual trigger via HTTP request received');
-        
         // Show stored data first
         const storedData = await getStoredData(env);
         let responseText = 'Cron job executed successfully\n\n';
@@ -352,7 +313,6 @@ export default {
       } catch (error: any) {
         console.error('Error in fetch handler:', error);
         const errorMessage = `Error: ${error?.message || 'Unknown error'}`;
-        console.error('Error message:', errorMessage);
         return new Response(errorMessage, { status: 500 });
       }
     }
@@ -361,7 +321,6 @@ export default {
   },
 
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    console.log('Scheduled cron job triggered');
     try {
       await runCronJob(env, ctx);
     } catch (error) {
