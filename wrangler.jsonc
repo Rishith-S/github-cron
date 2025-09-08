@@ -1,0 +1,22 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "github-cron",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-09-06",
+	"observability": {
+		"enabled": true
+	},
+	"triggers": {
+		"crons": ["0 * * * *"]
+	},
+	"kv_namespaces": [
+		{
+		  "binding": "SENT_JOBS_KV",
+		  "id": "e53092a7f4fe40569ae061f9a0615d54",
+		}
+	],
+	"vars": {
+		"TO_EMAIL": "saginalarishith@gmail.com",
+		"FROM_EMAIL": "Github-Internship <onboarding@resend.dev>"
+	}
+}
